@@ -1,0 +1,49 @@
+{
+  "artifacts": {
+    "best_metric": "f1",
+    "out_dir": "./artifacts"
+  },
+  "attack_paths": {
+    "test": "./attack/attack_test.json",
+    "train": "./attack/attack_train.json",
+    "val": "./attack/attack_val.json"
+  },
+  "attack_percent": 0.1,
+  "benign_paths": {
+    "test": "./benign/benign_test.json",
+    "train": "./benign/benign_train.json",
+    "val": "./benign/benign_val.json"
+  },
+  "data": {
+    "buffer_field": "buffers",
+    "fixed_len": 1024
+  },
+  "model": {
+    "conv_channels": [
+      16,
+      32,
+      64,
+      256
+    ],
+    "dropout": 0.2,
+    "in_channels": 1,
+    "kernel_sizes": [
+      7,
+      5,
+      3,
+      2
+    ],
+    "num_classes": 2,
+    "type": "cnn"
+  },
+  "sampling": {
+    "with_replacement": true
+  },
+  "seed": 362854,
+  "training": {
+    "batch_size": 128,
+    "epochs": 10,
+    "learning_rate": 0.001,
+    "weight_decay": 0.0
+  }
+}
