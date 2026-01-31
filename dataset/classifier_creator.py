@@ -513,16 +513,19 @@ class LSTMClassifier(nn.Module):
 
     def __init__(
         self,
-        input_size: int,
         hidden_size: int,
         num_layers: int,
         num_classes: int,
         dropout: float,
         bidirectional: bool,
+        vocab_size: int = 256,
+        embed_dim: int = 32,
     ) -> None:
         super().__init__()
+        self.vocab_size = vocab_size
+        self.embed = nn.Embedding(vocab_size, embed_dim)
         self.lstm = nn.LSTM(
-            input_size=input_size,
+            input_size=embed_dim,
             hidden_size=hidden_size,
             num_layers=num_layers,
             batch_first=True,
@@ -534,8 +537,10 @@ class LSTMClassifier(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x: (batch, channels=1, seq_len) -> (batch, seq_len, channels=1)
-        x = x.permute(0, 2, 1)
+        # x: (batch, channels=1, seq_len) -> token ids -> embeddings
+        x = x.squeeze(1)
+        x = torch.clamp((x * 255.0).round(), 0, self.vocab_size - 1).long()
+        x = self.embed(x)
 
         _, (h_n, _) = self.lstm(x)
 
@@ -557,12 +562,13 @@ def build_model(config: Dict[str, Any]) -> nn.Module:
     if model_type == "lstm":
         logger.info("Building LSTM model...")
         return LSTMClassifier(
-            input_size=int(model_cfg.get("in_channels", 1)),
             hidden_size=int(model_cfg.get("hidden_size", 64)),
             num_layers=int(model_cfg.get("num_layers", 2)),
             num_classes=int(model_cfg.get("num_classes", 2)),
             dropout=float(model_cfg.get("dropout", 0.0)),
             bidirectional=bool(model_cfg.get("bidirectional", False)),
+            vocab_size=int(model_cfg.get("vocab_size", 256)),
+            embed_dim=int(model_cfg.get("embed_dim", 32)),
         )
     
     logger.info("Building CNN model...")

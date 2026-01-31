@@ -8,7 +8,7 @@
     "train": "./attack/attack_train.json",
     "val": "./attack/attack_val.json"
   },
-  "attack_percent": 0.1,
+  "attack_percent": 0.3,
   "benign_paths": {
     "test": "./benign/benign_test.json",
     "train": "./benign/benign_train.json",
@@ -19,30 +19,21 @@
     "fixed_len": 1024
   },
   "model": {
-    "conv_channels": [
-      16,
-      32,
-      64,
-      256
-    ],
+    "bidirectional": true,
     "dropout": 0.2,
+    "hidden_size": 64,
     "in_channels": 1,
-    "kernel_sizes": [
-      7,
-      5,
-      3,
-      2
-    ],
     "num_classes": 2,
-    "type": "cnn"
+    "num_layers": 2,
+    "type": "lstm"
   },
   "sampling": {
     "with_replacement": true
   },
-  "seed": 362854,
+  "seed": 123451,
   "training": {
     "batch_size": 128,
-    "epochs": 10,
+    "epochs": 1,
     "learning_rate": 0.001,
     "weight_decay": 0.0
   }
