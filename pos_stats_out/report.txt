@@ -1,0 +1,7 @@
+pad_byte = 48 (0x30)
+benign N = 33114
+attack N = 19621
+benign records shorter than 1024: 33114
+benign records longer than 1024: 0
+attack records shorter than 1024: 18872
+attack records longer than 1024: 749
