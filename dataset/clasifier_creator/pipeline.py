@@ -67,6 +67,9 @@ class ClassifierPipeline:
         output_mode = getattr(model, "output_mode", "multiclass")
         threshold = float(model_cfg.get("threshold", 0.5))
 
+        pu_prior_cfg = training_cfg.get("pu_prior")
+        pu_prior = float(pu_prior_cfg) if pu_prior_cfg is not None else None
+
         trainer = Trainer(
             model=model,
             device=self.device,
@@ -77,6 +80,7 @@ class ClassifierPipeline:
             threshold=threshold,
             patience=int(training_cfg.get("patience", 0)),
             lr_scheduler_cfg=training_cfg.get("lr_scheduler"),
+            pu_prior=pu_prior,
         )
 
         history, best_metrics, last_state = trainer.train(

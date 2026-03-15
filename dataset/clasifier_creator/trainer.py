@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 
 from .metrics import MetricUtils
 from .local_types import Metrics
+from .pu_loss import PULoss
 
 logger = logging.getLogger(__name__)
 
@@ -28,16 +29,25 @@ class Trainer:
         threshold: float = 0.5,
         patience: int = 0,
         lr_scheduler_cfg: Optional[Dict[str, Any]] = None,
+        pu_prior: Optional[float] = None,
     ) -> None:
         self.model = model.to(device)
         self.device = device
         self.output_mode = output_mode
         self.threshold = threshold
         self.patience = patience  # 0 = disabled
+        self.pu_mode = pu_prior is not None
         if class_weights is not None:
             class_weights = class_weights.to(device)
 
-        if self.output_mode == "binary":
+        if self.pu_mode and self.output_mode == "binary":
+            logger.info(
+                "Using nnPU loss with class prior π=%.3f "
+                "(Positive-Unlabeled learning mode)",
+                pu_prior,
+            )
+            self.criterion = PULoss(prior=pu_prior, nnpu=True)
+        elif self.output_mode == "binary":
             pos_weight = None
             if class_weights is not None:
                 if class_weights.numel() >= 2:
