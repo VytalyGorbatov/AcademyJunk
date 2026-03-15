@@ -75,6 +75,8 @@ class ClassifierPipeline:
             class_weights=class_weights,
             output_mode=output_mode,
             threshold=threshold,
+            patience=int(training_cfg.get("patience", 0)),
+            lr_scheduler_cfg=training_cfg.get("lr_scheduler"),
         )
 
         history, best_metrics, last_state = trainer.train(

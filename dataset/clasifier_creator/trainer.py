@@ -26,11 +26,14 @@ class Trainer:
         class_weights: Optional[torch.Tensor] = None,
         output_mode: str = "multiclass",
         threshold: float = 0.5,
+        patience: int = 0,
+        lr_scheduler_cfg: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.model = model.to(device)
         self.device = device
         self.output_mode = output_mode
         self.threshold = threshold
+        self.patience = patience  # 0 = disabled
         if class_weights is not None:
             class_weights = class_weights.to(device)
 
@@ -49,6 +52,18 @@ class Trainer:
             self.model.parameters(), lr=learning_rate, weight_decay=weight_decay
         )
         self.max_grad_norm: float = 1.0
+
+        # Optional LR scheduler (ReduceLROnPlateau by default)
+        self.scheduler: Optional[torch.optim.lr_scheduler.ReduceLROnPlateau] = None
+        if lr_scheduler_cfg is not None:
+            self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                self.optimizer,
+                mode="max",
+                factor=float(lr_scheduler_cfg.get("factor", 0.5)),
+                patience=int(lr_scheduler_cfg.get("patience", 3)),
+                min_lr=float(lr_scheduler_cfg.get("min_lr", 1e-6)),
+                verbose=True,
+            )
 
     def _run_epoch(
         self,
@@ -138,6 +153,7 @@ class Trainer:
         best_state: Optional[Dict[str, Any]] = None
         last_state: Optional[Dict[str, Any]] = None
         history: Dict[str, List[Metrics]] = {"train": [], "val": []}
+        epochs_without_improvement = 0
 
         logger.info("Starting training for %s epochs on %s...", epochs, self.device)
 
@@ -170,23 +186,43 @@ class Trainer:
             }
 
             metric_val = float(val_metrics.get(best_metric_name, 0.0))
+
+            # Step the LR scheduler based on tracked metric
+            if self.scheduler is not None:
+                self.scheduler.step(metric_val)
+
             if metric_val > best_metric:
                 best_metric = metric_val
+                epochs_without_improvement = 0
                 best_state = {
                     "model_state_dict": copy.deepcopy(self.model.state_dict()),
                     "epoch": epoch,
                     "val_metrics": val_metrics,
                 }
+            else:
+                epochs_without_improvement += 1
 
+            current_lr = self.optimizer.param_groups[0]["lr"]
             logger.info(
-                "Epoch %s/%s | Train Loss: %.4f | Val Loss: %.4f | Val Acc: %.4f | Val F1: %.4f",
+                "Epoch %s/%s | Train Loss: %.4f | Val Loss: %.4f | Val Acc: %.4f "
+                "| Val F1: %.4f | LR: %.2e | No-improve: %s/%s",
                 epoch,
                 epochs,
                 train_loss,
                 val_metrics.get("loss", 0.0),
                 val_metrics.get("accuracy", 0.0),
                 val_metrics.get("f1", 0.0),
+                current_lr,
+                epochs_without_improvement,
+                self.patience if self.patience > 0 else "off",
             )
+
+            if self.patience > 0 and epochs_without_improvement >= self.patience:
+                logger.info(
+                    "Early stopping triggered: no improvement for %s epochs.",
+                    self.patience,
+                )
+                break
 
         if best_state:
             torch.save(best_state, out_dir / "model_best.pt")
