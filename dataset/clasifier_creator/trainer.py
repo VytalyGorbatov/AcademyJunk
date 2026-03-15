@@ -9,7 +9,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from .metrics import MetricUtils
-from .types import Metrics
+from .local_types import Metrics
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,6 @@ class Trainer:
                 factor=float(lr_scheduler_cfg.get("factor", 0.5)),
                 patience=int(lr_scheduler_cfg.get("patience", 3)),
                 min_lr=float(lr_scheduler_cfg.get("min_lr", 1e-6)),
-                verbose=True,
             )
 
     def _run_epoch(

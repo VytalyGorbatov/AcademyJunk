@@ -8,7 +8,7 @@
     "train": "../attack/train.json",
     "val": "../attack/val.json"
   },
-  "attack_percent": 0.1,
+  "attack_percent": 0.35,
   "benign_paths": {
     "test": "../benign/test.json",
     "train": "../benign/train.json",
@@ -21,33 +21,31 @@
     "split_by": "alerted"
   },
   "model": {
-    "buffer_proj_dim": 192,
-    "byte_embed_dim": 32,
+    "buffer_proj_dim": 128,
+    "byte_embed_dim": 24,
     "class_weights": [
       1.0,
-      5.0
+      3.0
     ],
-    "fusion_hidden_dim": 256,
+    "fusion_hidden_dim": 128,
     "norm_groups": 8,
     "num_classes": null,
     "pad_idx": 256,
     "prefix_lengths": [
       128,
-      256,
-      512
+      256
     ],
     "share_byte_encoder": false,
     "split_byte": 24,
-    "tcn_channels": 96,
+    "tcn_channels": 64,
     "tcn_dilations": [
       1,
       2,
-      4,
-      8
+      4
     ],
-    "tcn_dropout": 0.1,
+    "tcn_dropout": 0.25,
     "tcn_kernel_size": 5,
-    "threshold": 0.8,
+    "threshold": 0.4,
     "type": "tcn",
     "use_film": false,
     "vocab_size": 257
@@ -61,8 +59,14 @@
   },
   "training": {
     "batch_size": 64,
-    "epochs": 20,
-    "learning_rate": 0.0005,
-    "weight_decay": 0.0001
+    "epochs": 40,
+    "learning_rate": 0.0003,
+    "lr_scheduler": {
+      "factor": 0.5,
+      "min_lr": 1e-06,
+      "patience": 3
+    },
+    "patience": 8,
+    "weight_decay": 0.001
   }
 }

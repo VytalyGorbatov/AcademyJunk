@@ -1,6 +1,6 @@
 import numpy as np
 
-from .types import Metrics
+from .local_types import Metrics
 
 
 class MetricUtils:

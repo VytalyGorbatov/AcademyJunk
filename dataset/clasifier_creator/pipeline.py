@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from .data import DatasetBuilder
 from .models import build_model
 from .trainer import Trainer
-from .types import Metrics
+from .local_types import Metrics
 
 logger = logging.getLogger(__name__)
 

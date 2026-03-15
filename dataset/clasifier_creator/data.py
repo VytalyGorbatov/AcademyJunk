@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from .types import TensorPair, TensorTriple
+from .local_types import TensorPair, TensorTriple
 from .utils import DataUtils
 
 logger = logging.getLogger(__name__)
