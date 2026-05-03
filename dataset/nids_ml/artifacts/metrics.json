@@ -1,0 +1,23 @@
+{
+  "best_val_metrics": {
+    "best_f1": 0.6728226542472839,
+    "best_threshold": 0.07321606576442719,
+    "pr_auc": 0.7806293368339539,
+    "precision_at_best": 0.5718872547149658,
+    "recall_at_best": 0.8170234560966492
+  },
+  "pretrain_val": {
+    "best_f1": 0.5425134301185608,
+    "best_threshold": 0.28040701150894165,
+    "pr_auc": 0.33541032671928406,
+    "precision_at_best": 0.3722253739833832,
+    "recall_at_best": 1.0
+  },
+  "test_metrics": {
+    "best_f1": 0.6718606352806091,
+    "best_threshold": 0.06541363894939423,
+    "pr_auc": 0.771338939666748,
+    "precision_at_best": 0.5596843957901001,
+    "recall_at_best": 0.8402751088142395
+  }
+}
