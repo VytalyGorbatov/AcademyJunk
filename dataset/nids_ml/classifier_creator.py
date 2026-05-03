@@ -37,6 +37,8 @@ def main() -> int:
     parser.add_argument("--device", help="Override device (cpu, cuda, mps)")
     parser.add_argument("--epochs", type=int, help="Override epochs")
     parser.add_argument("--dry_run", action="store_true", help="Run single batch only")
+    parser.add_argument("--pretrained", type=str, default=None,
+                        help="Path to pretrain_epochN.pt checkpoint (skips Stage 1)")
     args = parser.parse_args()
 
     config_path = Path(args.config)
@@ -68,7 +70,7 @@ def main() -> int:
 
     if model_type == "tcn_2way":
         pipeline = TwoWayPipeline(config=config, device=device)
-        pipeline.run(stop_flag=stop_fn)
+        pipeline.run(stop_flag=stop_fn, pretrained_path=args.pretrained)
     else:
         pipeline = ClassifierPipeline(config=config, device=device)
         pipeline.run(

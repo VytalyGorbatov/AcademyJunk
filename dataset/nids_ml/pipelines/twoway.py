@@ -30,6 +30,7 @@ class TwoWayPipeline:
     def run(
         self,
         stop_flag: Optional[Callable[[], bool]] = None,
+        pretrained_path: Optional[str] = None,
     ) -> Tuple[Dict[str, Any], Dict[str, float], Dict[str, float]]:
         # 1. Build data loaders
         builder = TwoWayDatasetBuilder(self.config)
@@ -46,12 +47,20 @@ class TwoWayPipeline:
         n_params = sum(p.numel() for p in model.parameters())
         logger.info("Model parameters: %s", f"{n_params:,}")
 
-        # 3. Train — Stage 1 (pretraining) then Stage 2 (nnPU)
+        # 3. Train — optionally skip Stage 1 by loading a pretrained checkpoint
         trainer = TwoWayTrainer(model, self.device, training_cfg)
 
-        pretrain_stats = trainer.pretrain(
-            loaders["train_u"], loaders["val"], out_dir, stop_flag=stop_flag,
-        )
+        if pretrained_path:
+            pt_path = Path(pretrained_path)
+            if not pt_path.exists():
+                raise FileNotFoundError(f"Pretrained checkpoint not found: {pt_path}")
+            trainer.load_pretrained(pt_path)
+            pretrain_stats = trainer.evaluate(loaders["val"])
+            logger.info("Skipping Stage 1; loaded pretrained weights.")
+        else:
+            pretrain_stats = trainer.pretrain(
+                loaders["train_u"], loaders["val"], out_dir, stop_flag=stop_flag,
+            )
 
         best_val, best_path = trainer.train_pu(
             loaders["train_p"], loaders["train_u"], loaders["val"],

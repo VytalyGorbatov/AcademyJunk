@@ -99,6 +99,13 @@ class TwoWayTrainer(BaseTrainer):
         view["body_ids"], view["body_mask"] = b, bm
         return view
 
+    def load_pretrained(self, path: Path) -> None:
+        """Load backbone + heads weights from a pretrain checkpoint."""
+        ckpt = torch.load(path, map_location=self.device, weights_only=True)
+        self.backbone.load_state_dict(ckpt["backbone"])
+        self.heads.load_state_dict(ckpt["heads"])
+        logger.info("Loaded pretrained checkpoint from %s", path)
+
     def _reset_optimizer(self, use_adamw: bool = True) -> None:
         """Create a fresh optimizer + scheduler at full LR."""
         self.optim = self._init_optimizer(
