@@ -233,17 +233,15 @@ class TwoWayTrainer(BaseTrainer):
                 batch_p = to_device(batch_p, self.device)
                 batch_u = to_device(batch_u, self.device)
 
+                # --- Pass 1: PU + alert (backward frees this graph) ---
                 z_p = self.backbone(batch_p)
                 z_u = self.backbone(batch_u)
                 out_p = self.heads(z_p)
                 out_u = self.heads(z_u)
 
-                # Main PU risk
                 loss_pu, _ = nnpu_loss(
                     out_p["risk_logit"], out_u["risk_logit"], pi_p=self.pi_p,
                 )
-
-                # Auxiliary: predict alerted
                 loss_alert = (
                     F.binary_cross_entropy_with_logits(
                         out_p["alerted_logit"], batch_p["alerted"],
@@ -253,7 +251,10 @@ class TwoWayTrainer(BaseTrainer):
                     )
                 ) / 2.0
 
-                # SSL regulariser on unlabeled
+                loss_main = self.w_pu * loss_pu + self.w_alert * loss_alert
+                loss_main.backward()
+
+                # --- Pass 2: SSL regulariser (separate graph, less peak memory) ---
                 view1 = self._make_augmented_view(batch_u)
                 view2 = self._make_augmented_view(batch_u)
                 z1 = self.backbone(view1)
@@ -262,15 +263,16 @@ class TwoWayTrainer(BaseTrainer):
                     self.heads(z1)["proj"], self.heads(z2)["proj"],
                     temperature=self.temp,
                 )
+                loss_ssl = 0.1 * self.w_ssl * ssl
+                loss_ssl.backward()
 
-                loss = (
-                    self.w_pu * loss_pu
-                    + self.w_alert * loss_alert
-                    + 0.1 * self.w_ssl * ssl
-                )
+                # --- Single optimizer step (gradients from both passes accumulate) ---
+                if self.clip_grad:
+                    torch.nn.utils.clip_grad_norm_(self.all_params, self.clip_grad)
+                self.optim.step()
+                self.optim.zero_grad()
 
-                self._do_optim_step(loss)
-                total += float(loss.detach())
+                total += float(loss_main.detach()) + float(loss_ssl.detach())
                 n += 1
 
             val_stats = eval_on_loader(
