@@ -89,7 +89,8 @@ class ClassifierPipeline:
         for k, v in test_metrics.items():
             logger.info("  %s: %.4f", k, v)
 
-        self._save_test_samples(out_dir, model, loaders["test"], threshold=threshold)
+        self._save_sample_prognosis(out_dir, model, loaders["val"], "val")
+        self._save_sample_prognosis(out_dir, model, loaders["test"], "test")
 
         self._dump_results(out_dir, history, best_metrics, test_metrics)
 
@@ -134,25 +135,21 @@ class ClassifierPipeline:
         with (out_dir / "config_used.json").open("w", encoding="utf-8") as f:
             json.dump(self.config, f, indent=2, sort_keys=True)
 
-    def _save_test_samples(
+    def _save_sample_prognosis(
         self, out_dir: Path, model: torch.nn.Module, loader: DataLoader,
-        threshold: float = 0.5,
+        split: str,
     ) -> None:
-        testing_cfg = self.config.get("testing", {})
-        max_samples = int(testing_cfg.get("log_samples", 200))
-
-        if max_samples <= 0:
-            return
-
+        """Dump per-sample raw logits, scores, and ground-truth labels."""
         model.eval()
         dict_mode = _is_dict_model(model)
-        logged = 0
         rows: list[dict[str, Any]] = []
+
         with torch.no_grad():
             for batch in loader:
                 if isinstance(batch, dict):
                     batch = {k: v.to(self.device) for k, v in batch.items()}
-                    yb = batch.get("is_attack", batch.get("alerted"))
+                    is_attack = batch.get("is_attack")
+                    alerted = batch.get("alerted")
                     if dict_mode:
                         logits = model(batch)
                     else:
@@ -169,24 +166,29 @@ class ClassifierPipeline:
                     xb = xb.to(self.device)
                     yb = yb.to(self.device)
                     logits = model(xb)
+                    is_attack = yb
+                    alerted = None
                     n = xb.shape[0]
 
                 if logits.dim() == 1:
-                    probs = torch.sigmoid(logits)
-                    preds = (probs >= threshold).long()
+                    scores = torch.sigmoid(logits)
                 else:
-                    preds = torch.argmax(logits, dim=1)
+                    scores = torch.softmax(logits, dim=1)[:, 1]
+                    logits = logits[:, 1] - logits[:, 0]
 
                 for i in range(n):
-                    if logged >= max_samples:
-                        break
-                    rows.append({
-                        "expected": int(yb[i].item()),
-                        "received": int(preds[i].item()),
-                    })
-                    logged += 1
+                    row: dict[str, Any] = {
+                        "split": split,
+                        "raw_logit": round(float(logits[i].item()), 4),
+                        "raw_score": round(float(scores[i].item()), 4),
+                    }
+                    if is_attack is not None:
+                        row["is_attack"] = int(is_attack[i].item())
+                    if alerted is not None:
+                        row["alerted"] = int(alerted[i].item())
+                    rows.append(row)
 
-        out_path = out_dir / "test_samples.json"
+        out_path = out_dir / f"{split}_samples.json"
         with out_path.open("w", encoding="utf-8") as f:
             json.dump(rows, f, indent=2, ensure_ascii=True)
-        logger.info("Saved %s test samples to %s", len(rows), out_path)
+        logger.info("Saved %d %s samples to %s", len(rows), split, out_path)

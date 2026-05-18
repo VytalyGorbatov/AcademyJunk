@@ -1,0 +1,6 @@
+{
+  "type": "prior_correction",
+  "pi_train": 0.1,
+  "pi_target": 0.37208420038223267,
+  "shift": 1.673938670673407
+}

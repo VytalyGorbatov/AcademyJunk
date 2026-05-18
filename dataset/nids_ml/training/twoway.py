@@ -53,6 +53,55 @@ def eval_on_loader(
 
     return pr_curve_best_f1(torch.cat(all_scores), torch.cat(all_y))
 
+@torch.no_grad()
+def eval_on_loader_at_threshold(
+    backbone: ByteTCNBackbone,
+    heads: Heads,
+    loader: DataLoader,
+    device: torch.device,
+    threshold: float,
+) -> Dict[str, float]:
+    """Evaluate using a fixed decision threshold (e.g. from validation)."""
+    backbone.eval()
+    heads.eval()
+    all_scores: list[torch.Tensor] = []
+    all_y: list[torch.Tensor] = []
+
+    for batch in loader:
+        batch = to_device(batch, device)
+        z = backbone(batch)
+        out = heads(z)
+        all_scores.append(torch.sigmoid(out["risk_logit"]))
+        all_y.append(batch["is_attack"])
+
+    if not all_scores:
+        return {
+            "threshold": threshold, "f1": 0.0, "pr_auc": 0.0,
+            "precision": 0.0, "recall": 0.0,
+        }
+
+    scores = torch.cat(all_scores)
+    y_true = torch.cat(all_y)
+    preds = (scores >= threshold).float()
+    tp = (preds * y_true).sum()
+    fp = (preds * (1 - y_true)).sum()
+    fn = ((1 - preds) * y_true).sum()
+    precision = tp / (tp + fp).clamp_min(1.0)
+    recall = tp / (tp + fn).clamp_min(1.0)
+    f1 = 2 * precision * recall / (precision + recall).clamp_min(1e-12)
+
+    # Also report the sweep-based pr_auc for reference
+    sweep = pr_curve_best_f1(scores, y_true)
+
+    return {
+        "threshold": threshold,
+        "f1": float(f1.item()),
+        "precision": float(precision.item()),
+        "recall": float(recall.item()),
+        "pr_auc": sweep["pr_auc"],
+        "best_f1_sweep": sweep["best_f1"],
+        "best_threshold_sweep": sweep["best_threshold"],
+    }
 
 # ─── Trainer ─────────────────────────────────────────
 
