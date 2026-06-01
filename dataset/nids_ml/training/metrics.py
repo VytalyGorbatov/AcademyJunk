@@ -73,4 +73,53 @@ def pr_curve_best_f1(
     }
 
 
-__all__ = ["MetricUtils", "pr_curve_best_f1"]
+@torch.no_grad()
+def snort_fn_metrics(
+    scores: torch.Tensor,
+    is_attack: torch.Tensor,
+    alerted: torch.Tensor,
+    threshold: float,
+) -> Dict[str, float]:
+    """Compute metrics on the Snort-FN subset (alerted=0, is_attack=1).
+
+    This measures the model's ability to detect attacks that Snort missed.
+    """
+    scores = scores.detach().cpu()
+    is_attack = is_attack.detach().cpu()
+    alerted = alerted.detach().cpu()
+
+    # Snort FN subset: attacks that Snort did NOT alert on
+    fn_mask = (alerted == 0) & (is_attack == 1)
+    fn_count = int(fn_mask.sum().item())
+
+    if fn_count == 0:
+        return {
+            "snort_fn_count": 0,
+            "snort_fn_recall": 0.0,
+            "snort_fn_recovered": 0,
+        }
+
+    fn_scores = scores[fn_mask]
+    recovered = (fn_scores >= threshold).sum().item()
+    recall = recovered / fn_count
+
+    # Also compute precision: of all model positives in the alerted=0 subset,
+    # how many are true attacks?
+    unalerted_mask = (alerted == 0)
+    unalerted_preds = (scores[unalerted_mask] >= threshold)
+    unalerted_attacks = is_attack[unalerted_mask]
+    tp = (unalerted_preds & (unalerted_attacks == 1)).sum().item()
+    fp = (unalerted_preds & (unalerted_attacks == 0)).sum().item()
+    precision = tp / max(tp + fp, 1e-12)
+    f1 = 2 * precision * recall / max(precision + recall, 1e-12)
+
+    return {
+        "snort_fn_count": fn_count,
+        "snort_fn_recovered": int(recovered),
+        "snort_fn_recall": recall,
+        "snort_fn_precision": precision,
+        "snort_fn_f1": f1,
+    }
+
+
+__all__ = ["MetricUtils", "pr_curve_best_f1", "snort_fn_metrics"]

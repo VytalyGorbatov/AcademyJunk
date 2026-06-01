@@ -40,6 +40,8 @@ def main() -> int:
     parser.add_argument("--dry_run", action="store_true", help="Run single batch only")
     parser.add_argument("--pretrained", type=str, default=None,
                         help="Path to pretrain_epochN.pt checkpoint (skips Stage 1)")
+    parser.add_argument("--calibrate", type=str, default=None,
+                        help="Path to model_best.pt — run calibration only (no training)")
     args = parser.parse_args()
 
     config_path = Path(args.config)
@@ -71,7 +73,10 @@ def main() -> int:
 
     if model_type == "tcn_2way":
         pipeline = TwoWayPipeline(config=config, device=device)
-        pipeline.run(stop_flag=stop_fn, pretrained_path=args.pretrained)
+        if args.calibrate:
+            pipeline.calibrate(checkpoint_path=args.calibrate)
+        else:
+            pipeline.run(stop_flag=stop_fn, pretrained_path=args.pretrained)
     else:
         pipeline = ClassifierPipeline(config=config, device=device)
         pipeline.run(

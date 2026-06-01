@@ -17,7 +17,7 @@ from ..data.common import to_device
 from ..data import TwoWayDatasetBuilder
 from ..models import build_model
 from ..training.twoway import TwoWayTrainer, eval_on_loader_at_threshold
-from ..training.calibration import BaseCalibrator, PriorCorrectionCalibrator
+from ..training.calibration import BaseCalibrator, PriorCorrectionCalibrator, pick_best_calibrator
 
 logger = logging.getLogger(__name__)
 
@@ -220,3 +220,53 @@ class TwoWayPipeline:
             json.dump(rows, f, indent=2, ensure_ascii=True)
         logger.info("Saved %d %s samples to %s", len(rows), split, out_path)
         logger.info("Saved %d %s samples to %s", len(rows), split, out_path)
+
+    # ── calibrate-only mode ─────────────────────────
+
+    def calibrate(self, checkpoint_path: str) -> Dict[str, Any]:
+        """
+        Load a trained model, fit the best calibrator on val, evaluate on test.
+
+        No training happens — purely inference + calibration.
+        """
+        # 1. Build data loaders
+        builder = TwoWayDatasetBuilder(self.config)
+        loaders = builder.build_loaders()
+
+        artifacts_cfg = self.config.get("artifacts", {})
+        out_dir = Path(artifacts_cfg.get("out_dir", "./artifacts"))
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        # 2. Build model & load checkpoint
+        model = build_model(self.config)
+        ckpt = torch.load(checkpoint_path, map_location=self.device, weights_only=True)
+        model.backbone.load_state_dict(ckpt["backbone"])
+        model.heads.load_state_dict(ckpt["heads"])
+        model.backbone.to(self.device)
+        model.heads.to(self.device)
+        logger.info("Loaded checkpoint: %s", checkpoint_path)
+
+        # 3. Collect val logits and pick best calibrator
+        val_logits, val_labels = self._collect_logits(model, loaders["val"])
+        training_cfg = self.config.get("training", {})
+        pi_train = float(training_cfg.get("pi_p", training_cfg.get("pu_prior", 0.10)))
+
+        logger.info("Fitting calibrators...")
+        calibrator = pick_best_calibrator(val_logits, val_labels, pi_train=pi_train)
+        calibrator.save(out_dir / "calibrator.json")
+        logger.info("Saved calibrator to %s", out_dir / "calibrator.json")
+
+        # 4. Evaluate on test
+        test_stats = self._eval_calibrated(model, loaders["test"], calibrator, {})
+        logger.info("Test Metrics (calibrated, threshold=0.5):")
+        for k, v in test_stats.items():
+            if isinstance(v, float):
+                logger.info("  %s: %.4f", k, v)
+            else:
+                logger.info("  %s: %s", k, v)
+
+        # 5. Save per-sample prognosis
+        self._save_sample_prognosis(out_dir, model, loaders["val"], "val", calibrator)
+        self._save_sample_prognosis(out_dir, model, loaders["test"], "test", calibrator)
+
+        return test_stats

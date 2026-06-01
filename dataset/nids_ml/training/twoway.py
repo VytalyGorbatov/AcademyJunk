@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader
 from ..data.common import augment_ids, to_device
 from .base import BaseTrainer, EarlyStopper
 from .losses import contrastive_nt_xent, nnpu_loss
-from .metrics import pr_curve_best_f1
+from .metrics import pr_curve_best_f1, snort_fn_metrics
 from ..models.tcn_2way import ByteTCN2WayClassifier, ByteTCNBackbone, Heads
 
 logger = logging.getLogger(__name__)
@@ -37,6 +37,7 @@ def eval_on_loader(
     heads.eval()
     all_scores: list[torch.Tensor] = []
     all_y: list[torch.Tensor] = []
+    all_alerted: list[torch.Tensor] = []
 
     for batch in loader:
         batch = to_device(batch, device)
@@ -44,14 +45,27 @@ def eval_on_loader(
         out = heads(z)
         all_scores.append(torch.sigmoid(out["risk_logit"]))
         all_y.append(batch["is_attack"])
+        if "alerted" in batch:
+            all_alerted.append(batch["alerted"])
 
     if not all_scores:
         return {
             "best_threshold": 0.5, "best_f1": 0.0, "pr_auc": 0.0,
             "precision_at_best": 0.0, "recall_at_best": 0.0,
+            "snort_fn_recall": 0.0,
         }
 
-    return pr_curve_best_f1(torch.cat(all_scores), torch.cat(all_y))
+    scores = torch.cat(all_scores)
+    y = torch.cat(all_y)
+    result = pr_curve_best_f1(scores, y)
+
+    # Snort FN recovery at the best threshold
+    if all_alerted:
+        alerted = torch.cat(all_alerted)
+        fn_stats = snort_fn_metrics(scores, y, alerted, result["best_threshold"])
+        result.update(fn_stats)
+
+    return result
 
 @torch.no_grad()
 def eval_on_loader_at_threshold(
@@ -134,6 +148,7 @@ class TwoWayTrainer(BaseTrainer):
 
         self.all_params = list(self.model.parameters())
         self.sched_cfg = {"factor": 0.5, "patience": 3, "min_lr": 1e-6}
+        self.best_metric = str(training_cfg.get("best_metric", "pr_auc"))
 
     # ── helpers ─────────────────────────────────────
 
@@ -327,18 +342,20 @@ class TwoWayTrainer(BaseTrainer):
             val_stats = eval_on_loader(
                 self.backbone, self.heads, loader_val, self.device,
             )
-            pr_auc = val_stats["pr_auc"]
-            self._step_scheduler(self.sched, pr_auc)
+            metric_val = val_stats.get(self.best_metric, val_stats["pr_auc"])
+            self._step_scheduler(self.sched, metric_val)
             lr = self.optim.param_groups[0]["lr"]
+            fn_recall = val_stats.get("snort_fn_recall", 0.0)
             logger.info(
-                "[nnPU epoch %d] loss=%.4f val_pr_auc=%.4f bestF1=%.4f "
-                "thr=%.3f lr=%.2e",
-                epoch, total / max(1, n), pr_auc, val_stats["best_f1"],
+                "[nnPU epoch %d] loss=%.4f %s=%.4f bestF1=%.4f "
+                "fn_recall=%.4f thr=%.3f lr=%.2e",
+                epoch, total / max(1, n), self.best_metric, metric_val,
+                val_stats["best_f1"], fn_recall,
                 val_stats["best_threshold"], lr,
             )
 
-            if pr_auc > best_pr_auc:
-                best_pr_auc = pr_auc
+            if metric_val > best_pr_auc:
+                best_pr_auc = metric_val
                 best_val = val_stats
                 torch.save(
                     {"backbone": self.backbone.state_dict(),
@@ -347,11 +364,11 @@ class TwoWayTrainer(BaseTrainer):
                     best_path,
                 )
 
-            if stopper.step(pr_auc):
+            if stopper.step(metric_val):
                 logger.info("Early stopping triggered.")
                 break
 
-        logger.info("Best checkpoint: val_pr_auc=%.4f", best_pr_auc)
+        logger.info("Best checkpoint: %s=%.4f", self.best_metric, best_pr_auc)
         torch.save(
             {"backbone": self.backbone.state_dict(),
              "heads": self.heads.state_dict()},
