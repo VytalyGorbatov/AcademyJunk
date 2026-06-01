@@ -17,7 +17,7 @@ from ..data.common import to_device
 from ..data import TwoWayDatasetBuilder
 from ..models import build_model
 from ..training.twoway import TwoWayTrainer, eval_on_loader_at_threshold
-from ..training.calibration import BaseCalibrator, PriorCorrectionCalibrator, pick_best_calibrator
+from ..training.calibration import BaseCalibrator, IsotonicCalibrator, PriorCorrectionCalibrator, pick_best_calibrator
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ class TwoWayPipeline:
         # Collect val logits for calibration
         val_logits, val_labels = self._collect_logits(model, loaders["val"])
         pi_train = float(training_cfg.get("pi_p", training_cfg.get("pu_prior", 0.10)))
-        calibrator = PriorCorrectionCalibrator(pi_train=pi_train)
+        calibrator = IsotonicCalibrator()
         calibrator.fit(val_logits, val_labels)
         calibrator.save(out_dir / "calibrator.json")
 
